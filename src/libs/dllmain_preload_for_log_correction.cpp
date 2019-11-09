@@ -1,7 +1,10 @@
 //
-//  file:           dllmain_test_preload_lib.cpp
+//  file:           dllmain_preload_for_log_correction.cpp
 //  created on:     2019 Nov 08
 //
+
+#include "preload_lib_internal.h"
+#define DEF_FUNCTIONS_VISIBILITY2   MAKE_SYMBOL_WEAK2
 
 #include <signal.h>
 #include <pthread.h>
@@ -9,6 +12,8 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/select.h>
+#include <preload_for_log_correction.h>
+#include <stdarg.h>
 
 #ifdef __USE_POSIX199309
 #undef sa_handler
@@ -30,6 +35,54 @@ static int          s_nWork = 0;
 static pthread_t    s_redirectorThread = 0;
 static int          s_vPipesStdOut[2]={-1,-1},s_vPipesStdErr[2]={-1,-1};
 static int          s_stdoutCopy=-1, s_stderrCopy=-1;
+
+BEGIN_C_DECL2
+
+PRELOAD_OUT_EXP int PrintOutNoRecursion(const char* a_cpcFormat, ...)
+{
+    int nReturn;
+    va_list argList;
+    va_start(argList,a_cpcFormat);
+    nReturn = vdprintf(s_stdoutCopy,a_cpcFormat,argList);
+    va_end(argList);
+    return nReturn;
+}
+
+
+PRELOAD_OUT_EXP int PrintErrNoRecursion(const char* a_cpcFormat, ...)
+{
+    int nReturn;
+    va_list argList;
+    va_start(argList,a_cpcFormat);
+    nReturn = vdprintf(s_stderrCopy,a_cpcFormat,argList);
+    va_end(argList);
+    return nReturn;
+}
+
+PRELOAD_OUT_EXP ssize_t WriteOutNoRecursion(const void* a_buffer, size_t a_bufferSize)
+{
+    return write(s_stdoutCopy,a_buffer,a_bufferSize);
+}
+
+
+PRELOAD_OUT_EXP ssize_t WriteErrNoRecursion(const void* a_buffer, size_t a_bufferSize)
+{
+    return write(s_stderrCopy,a_buffer,a_bufferSize);
+}
+
+
+void HandleUserStdout(const void* a_buffer, size_t a_unBufferSize )
+{
+    dprintf(s_stdoutCopy,"readSize=%d, buffer=%." READ_BUFFER_MAX_SIZE_STR "s", static_cast<int>(a_unBufferSize),static_cast<const char*>(a_buffer) );
+}
+
+
+void HandleUserStderr(const void* a_buffer, size_t a_unBufferSize )
+{
+    dprintf(s_stderrCopy,"readSize=%d, buffer=%." READ_BUFFER_MAX_SIZE_STR "s", static_cast<int>(a_unBufferSize),static_cast<const char*>(a_buffer) );
+}
+
+END_C_DECL2
 
 
 static void test_preload_lib_init (void)
@@ -113,17 +166,6 @@ static void test_preload_lib_fini (void)
         s_vPipesStdErr[1]=-1;
         s_vPipesStdErr[0]=-1;
     }
-}
-
-
-static void HandleUserStdout(const void* a_buffer, size_t a_unBufferSize )
-{
-    dprintf(s_stdoutCopy,"readSize=%d, buffer=%." READ_BUFFER_MAX_SIZE_STR "s", static_cast<int>(a_unBufferSize),static_cast<const char*>(a_buffer) );
-}
-
-static void HandleUserStderr(const void* a_buffer, size_t a_unBufferSize )
-{
-    dprintf(s_stderrCopy,"readSize=%d, buffer=%." READ_BUFFER_MAX_SIZE_STR "s", static_cast<int>(a_unBufferSize),static_cast<const char*>(a_buffer) );
 }
 
 
